@@ -1,0 +1,125 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Kodi Addons\n"
+"Report-Msgid-Bugs-To: translations@kodi.tv\n"
+"POT-Creation-Date: 2024-05-23 14:00+0000\n"
+"PO-Revision-Date: 2024-05-23 14:00+0000\n"
+"Last-Translator: Kodi Translation Team\n"
+"Language-Team: English (https://kodi.weblate.cloud/languages/en_gb/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#30001"
+msgid "Notification"
+msgstr "Notification"
+
+msgctxt "#30002"
+msgid "Enable Sync"
+msgstr "Enable Sync"
+
+msgctxt "#30003"
+msgid "Main System?"
+msgstr "Main System?"
+
+msgctxt "#30004"
+msgid "Custom Folder Name"
+msgstr "Custom Folder Name"
+
+msgctxt "#30005"
+msgid "Specific Custom Folder for Overwrite"
+msgstr "Specific Custom Folder for Overwrite"
+
+msgctxt "#30006"
+msgid "FTP Settings"
+msgstr "FTP Settings"
+
+msgctxt "#30007"
+msgid "FTP Base Path"
+msgstr "FTP Base Path"
+
+msgctxt "#30008"
+msgid "FTP Host"
+msgstr "FTP Host"
+
+msgctxt "#30009"
+msgid "FTP User"
+msgstr "FTP User"
+
+msgctxt "#30010"
+msgid "FTP Password"
+msgstr "FTP Password"
+
+msgctxt "#30011"
+msgid "Sync Options"
+msgstr "Sync Options"
+
+msgctxt "#30012"
+msgid "Overwrite Static Favourites"
+msgstr "Overwrite Static Favourites"
+
+msgctxt "#30013"
+msgid "Static Folders (comma separated)"
+msgstr "Static Folders (comma separated)"
+
+msgctxt "#30014"
+msgid "Image Settings"
+msgstr "Image Settings"
+
+msgctxt "#30016"
+msgid "Image List URL"
+msgstr "Image List URL"
+
+msgctxt "#30017"
+msgid "Enable Image Rotation"
+msgstr "Enable Image Rotation"
+
+msgctxt "#30019"
+msgid "Favourites downloaded"
+msgstr "Favourites downloaded"
+
+msgctxt "#30020"
+msgid "Error downloading Favourites"
+msgstr "Error downloading Favourites"
+
+msgctxt "#30023"
+msgid "Custom Folder Name is required"
+msgstr "Custom Folder Name is required"
+
+msgctxt "#30024"
+msgid "Custom folder '{folder}' does not exist on the server. Please create it and try again."
+msgstr "Custom folder '{folder}' does not exist on the server. Please create it and try again."
+
+msgctxt "#30025"
+msgid "Overwritten {folder} favourites from server"
+msgstr "Overwritten {folder} favourites from server"
+
+msgctxt "#30026"
+msgid "Error downloading {folder} favourites from server"
+msgstr "Error downloading {folder} favourites from server"
+
+msgctxt "#30027"
+msgid "{folder} favourites downloaded"
+msgstr "{folder} favourites downloaded"
+
+msgctxt "#30028"
+msgid "Synchronization complete. Reload to see the updated favourites?"
+msgstr "Synchronization complete. Reload to see the updated favourites?"
+
+msgctxt "#30032"
+msgid "Random image downloaded"
+msgstr "Random image downloaded"
+
+msgctxt "#30033"
+msgid "Image list URL not provided"
+msgstr "Image list URL not provided"
+
+msgctxt "#30034"
+msgid "No image URLs found in the list"
+msgstr "No image URLs found in the list"
+
+msgctxt "#30035"
+msgid "Cache cleared"
+msgstr "Cache cleared"

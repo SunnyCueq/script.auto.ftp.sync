@@ -1,0 +1,125 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Kodi Addons\n"
+"Report-Msgid-Bugs-To: translations@kodi.tv\n"
+"POT-Creation-Date: 2024-05-23 14:00+0000\n"
+"PO-Revision-Date: 2024-05-23 14:00+0000\n"
+"Last-Translator: Kodi Translation Team\n"
+"Language-Team: Deutsch (https://kodi.weblate.cloud/languages/de_de/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#30001"
+msgid "Notification"
+msgstr "Benachrichtigung"
+
+msgctxt "#30002"
+msgid "Enable Sync"
+msgstr "Synchronisation aktivieren"
+
+msgctxt "#30003"
+msgid "Main System?"
+msgstr "Hauptsystem?"
+
+msgctxt "#30004"
+msgid "Custom Folder Name"
+msgstr "Benutzerdefinierter Ordnername"
+
+msgctxt "#30005"
+msgid "Specific Custom Folder for Overwrite"
+msgstr "Spezifischer benutzerdefinierter Ordner zum Überschreiben"
+
+msgctxt "#30006"
+msgid "FTP Settings"
+msgstr "FTP-Einstellungen"
+
+msgctxt "#30007"
+msgid "FTP Base Path"
+msgstr "FTP-Basispfad"
+
+msgctxt "#30008"
+msgid "FTP Host"
+msgstr "FTP-Host"
+
+msgctxt "#30009"
+msgid "FTP User"
+msgstr "FTP-Benutzer"
+
+msgctxt "#30010"
+msgid "FTP Password"
+msgstr "FTP-Passwort"
+
+msgctxt "#30011"
+msgid "Sync Options"
+msgstr "Synchronisationsoptionen"
+
+msgctxt "#30012"
+msgid "Overwrite Static Favourites"
+msgstr "Statische Favoriten überschreiben"
+
+msgctxt "#30013"
+msgid "Static Folders (comma separated)"
+msgstr "Statische Ordner (durch Kommas getrennt)"
+
+msgctxt "#30014"
+msgid "Image Settings"
+msgstr "Bildeinstellungen"
+
+msgctxt "#30016"
+msgid "Image List URL"
+msgstr "Bildlisten-URL"
+
+msgctxt "#30017"
+msgid "Enable Image Rotation"
+msgstr "Hintergrundbild-Rotation aktivieren"
+
+msgctxt "#30019"
+msgid "Favourites downloaded"
+msgstr "Favoriten heruntergeladen"
+
+msgctxt "#30020"
+msgid "Error downloading Favourites"
+msgstr "Fehler beim Herunterladen der Favoriten"
+
+msgctxt "#30023"
+msgid "Custom Folder Name is required"
+msgstr "Ein benutzerdefinierter Ordnername ist erforderlich"
+
+msgctxt "#30024"
+msgid "Custom folder '{folder}' does not exist on the server. Please create it and try again."
+msgstr "Der benutzerdefinierte Ordner '{folder}' existiert nicht auf dem Server. Bitte erstellen Sie ihn und versuchen Sie es erneut."
+
+msgctxt "#30025"
+msgid "Overwritten {folder} favourites from server"
+msgstr "Favoriten vom Server überschrieben: {folder}"
+
+msgctxt "#30026"
+msgid "Error downloading {folder} favourites from server"
+msgstr "Fehler beim Herunterladen der Favoriten vom Server: {folder}"
+
+msgctxt "#30027"
+msgid "{folder} favourites downloaded"
+msgstr "{folder} Favoriten heruntergeladen"
+
+msgctxt "#30028"
+msgid "Synchronization complete. Reload to see the updated favourites?"
+msgstr "Synchronisation abgeschlossen. Neu laden, um die aktualisierten Favoriten anzuzeigen?"
+
+msgctxt "#30032"
+msgid "Random image downloaded"
+msgstr "Zufallsbild heruntergeladen"
+
+msgctxt "#30033"
+msgid "Image list URL not provided"
+msgstr "URL für Bildliste nicht angegeben"
+
+msgctxt "#30034"
+msgid "No image URLs found in the list"
+msgstr "Keine Bild-URLs in der Liste gefunden"
+
+msgctxt "#30035"
+msgid "Cache cleared"
+msgstr "Cache geleert"
