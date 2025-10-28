@@ -264,7 +264,9 @@ class FTPManager:
             except Exception as e:
                 xbmc.log(f"Error closing FTP connection: {str(e)}", xbmc.LOGERROR)
             finally:
-                self._connection = Nonedef ftp_upload_legacy(local_path, remote_path):
+                self._connection = None
+
+def ftp_upload_legacy(local_path, remote_path):
     """Ursprüngliche FTP-Upload-Funktion für Rückwärtskompatibilität"""
     try:
         with ftplib.FTP(FTP_HOST) as ftp:
@@ -347,7 +349,9 @@ def ftp_folder_exists(ftp_manager: FTPManager, folder_path: str) -> bool:
             return False
     except Exception as e:
         xbmc.log(f"Unexpected error checking folder: {str(e)}", xbmc.LOGERROR)
-        return Falsedef sync_standard_favourites():
+        return False
+
+def sync_standard_favourites():
     """Synchronisiert Standard-Favoriten (ursprüngliche Funktion)"""
     if IS_MAIN_SYSTEM:
         return ftp_upload_legacy(LOCAL_FAVOURITES, FTP_PATH)
@@ -409,7 +413,9 @@ def sync_static_favourites_optimized(ftp_manager: FTPManager) -> bool:
         return success
     except Exception as e:
         xbmc.log(f"Error syncing static favourites: {str(e)}", xbmc.LOGERROR)
-        return Falsedef clear_texture_cache() -> bool:
+        return False
+
+def clear_texture_cache() -> bool:
     """Löscht den Textur-Cache"""
     try:
         db_path = xbmcvfs.translatePath('special://database/Textures13.db')
@@ -426,7 +432,7 @@ def sync_static_favourites_optimized(ftp_manager: FTPManager) -> bool:
         return True
     except Exception as e:
         xbmc.log(f"Error clearing texture cache: {str(e)}", xbmc.LOGERROR)
-        return Falsedef download_random_image() -> bool:
+        return Falsedef download_random_image() -> bool:
     """Lädt ein zufälliges Bild herunter und speichert es"""
     if not config.image_list_url or not config.enable_image_rotation:
         xbmc.log("Image rotation disabled or no URL provided", xbmc.LOGINFO)
