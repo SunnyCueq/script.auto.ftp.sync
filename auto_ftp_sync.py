@@ -211,8 +211,32 @@ def ftp_folder_exists(ftp_manager: FTPManager, folder_path: str) -> bool:
             return False
     except Exception as e:
         xbmc.log(f"Unexpected error checking folder: {str(e)}", xbmc.LOGERROR)
-        return Falsedef sync_standard_favourites(ftp_manager: FTPManager) -> bool:
-    """Synchronisiert Standard-Favoriten"""
+        return Falsedef sync_standard_favourites():
+    """Synchronisiert Standard-Favoriten (ursprüngliche Funktion)"""
+    if IS_MAIN_SYSTEM:
+        return ftp_upload_legacy(LOCAL_FAVOURITES, FTP_PATH)
+    else:
+        return ftp_download_legacy(FTP_PATH, LOCAL_FAVOURITES)
+
+def sync_static_favourites():
+    """Synchronisiert statische Favoriten (ursprüngliche Funktion)"""
+    for folder in STATIC_FOLDERS:
+        if not folder:  # Überspringe leere Ordner
+            continue
+            
+        local_static_path = os.path.join(SUPER_FAVOURITES_PATH, folder, 'favourites.xml')
+        remote_static_path = f"/{FTP_BASE_PATH}/auto_fav_sync/{CUSTOM_FOLDER}/{folder}/favourites.xml"
+        
+        if IS_MAIN_SYSTEM:
+            ftp_upload_legacy(local_static_path, remote_static_path)
+        else:
+            ftp_download_legacy(remote_static_path, local_static_path)
+            if OVERWRITE_STATIC and folder == SPECIFIC_CUSTOM_FOLDER:
+                specific_remote_static_path = f"/{FTP_BASE_PATH}/auto_fav_sync/{SPECIFIC_CUSTOM_FOLDER}/favourites.xml"
+                ftp_download_legacy(specific_remote_static_path, local_static_path)
+
+def sync_standard_favourites_optimized(ftp_manager: FTPManager) -> bool:
+    """Synchronisiert Standard-Favoriten (optimierte Version)"""
     try:
         if config.is_main_system:
             return ftp_upload(ftp_manager, config.local_favourites, config.ftp_path)
@@ -222,8 +246,8 @@ def ftp_folder_exists(ftp_manager: FTPManager, folder_path: str) -> bool:
         xbmc.log(f"Error syncing standard favourites: {str(e)}", xbmc.LOGERROR)
         return False
 
-def sync_static_favourites(ftp_manager: FTPManager) -> bool:
-    """Synchronisiert statische Favoriten"""
+def sync_static_favourites_optimized(ftp_manager: FTPManager) -> bool:
+    """Synchronisiert statische Favoriten (optimierte Version)"""
     success = True
     try:
         for folder in config.static_folders:
@@ -311,8 +335,21 @@ def sync_static_favourites(ftp_manager: FTPManager) -> bool:
         xbmc.log(f"URLError downloading image: {e.reason}", xbmc.LOGERROR)
     except Exception as e:
         xbmc.log(f"Failed to download random image: {str(e)}", xbmc.LOGERROR)
-  def sync_favourites() -> bool:
-    """Hauptfunktion für die Synchronisation der Favoriten"""
+  def sync_favourites():
+    """Hauptfunktion für die Synchronisation der Favoriten (ursprüngliche Version)"""
+    if not CUSTOM_FOLDER:
+        show_notification(30023, 5000)  # Ein benutzerdefinierter Ordnername ist erforderlich
+        return
+
+    if not ftp_folder_exists_legacy(f"/{FTP_BASE_PATH}/auto_fav_sync/{CUSTOM_FOLDER}"):
+        show_notification(30024, 5000, folder=CUSTOM_FOLDER)  # Benutzerdefinierter Ordner nicht gefunden
+        return
+
+    sync_standard_favourites()
+    sync_static_favourites()
+
+def sync_favourites_optimized() -> bool:
+    """Hauptfunktion für die Synchronisation der Favoriten (optimierte Version)"""
     try:
         if not config.custom_folder:
             show_notification(30023, 5000)  # Ein benutzerdefinierter Ordnername ist erforderlich
@@ -329,9 +366,9 @@ def sync_static_favourites(ftp_manager: FTPManager) -> bool:
 
             # Synchronisiere Favoriten
             success = True
-            if not sync_standard_favourites(ftp_manager):
+            if not sync_standard_favourites_optimized(ftp_manager):
                 success = False
-            if not sync_static_favourites(ftp_manager):
+            if not sync_static_favourites_optimized(ftp_manager):
                 success = False
                 
             if success:
@@ -346,26 +383,7 @@ def sync_static_favourites(ftp_manager: FTPManager) -> bool:
         xbmc.log(f"Error in sync_favourites: {str(e)}", xbmc.LOGERROR)
         return False
 
-# Hauptausführung
-if config.enabled:
-    try:
-        xbmc.log("Auto FTP Sync started", xbmc.LOGINFO)
-        
-        # Synchronisiere Favoriten
-        if sync_favourites():
-            xbmc.log("Favourites sync completed successfully", xbmc.LOGINFO)
-        else:
-            xbmc.log("Favourites sync failed", xbmc.LOGERROR)
-            
-        # Lade zufälliges Bild herunter
-        if download_random_image():
-            xbmc.log("Random image download completed successfully", xbmc.LOGINFO)
-        else:
-            xbmc.log("Random image download failed", xbmc.LOGWARNING)
-            
-        xbmc.log("Auto FTP Sync completed", xbmc.LOGINFO)
-        
-    except Exception as e:
-        xbmc.log(f"Critical error in Auto FTP Sync: {str(e)}", xbmc.LOGERROR)
-else:
-    xbmc.log("Auto FTP Sync is disabled", xbmc.LOGINFO)
+# Hauptausführung - Ursprüngliche Version
+if ENABLED:
+    sync_favourites()
+    download_random_image()
