@@ -659,3 +659,24 @@ if ENABLED:
         sync_favourites()  # Fallback auf ursprüngliche Version
     
     download_random_image()
+
+def force_sync():
+    """Erzwingt eine vollständige Synchronisation"""
+    try:
+        xbmc.log("Force sync started", xbmc.LOGINFO)
+        
+        # Lösche den Sync-Status, um eine vollständige Synchronisation zu erzwingen
+        sync_manager = SyncManager(config)
+        sync_manager.save_sync_state({})
+        
+        # Führe die echte Synchronisation durch
+        if sync_favourites_real():
+            show_notification(30028, 5000)  # Synchronisation abgeschlossen
+            return True
+        else:
+            show_notification(30029, 5000)  # Synchronisation fehlgeschlagen
+            return False
+            
+    except Exception as e:
+        xbmc.log(f"Error in force sync: {str(e)}", xbmc.LOGERROR)
+        return False
