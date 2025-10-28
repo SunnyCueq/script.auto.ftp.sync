@@ -61,6 +61,26 @@ class Config:
 # Globale Konfiguration
 config = Config()
 LANGUAGE = ADDON.getLocalizedString
+
+# Rückwärtskompatibilität - Globale Variablen für bestehenden Code
+ENABLED = config.enabled
+IS_MAIN_SYSTEM = config.is_main_system
+OVERWRITE_STATIC = config.overwrite_static
+FTP_BASE_PATH = config.ftp_base_path
+CUSTOM_FOLDER = config.custom_folder
+SPECIFIC_CUSTOM_FOLDER = config.specific_custom_folder
+IMAGE_LIST_URL = config.image_list_url
+FTP_HOST = config.ftp_host
+FTP_USER = config.ftp_user
+FTP_PASS = config.ftp_pass
+FTP_PATH = config.ftp_path
+LOCAL_FAVOURITES = config.local_favourites
+SUPER_FAVOURITES_PATH = config.super_favourites_path
+LOCAL_IMAGE_PATH = config.local_image_path
+ADDON_IMAGE_PATH = config.addon_image_path
+STATIC_FOLDERS = config.static_folders
+ENABLE_IMAGE_ROTATION = config.enable_image_rotation
+ICON_PATH = config.icon_path
 def show_notification(message_id: int, duration: int = 5000, **kwargs) -> None:
     """Zeigt eine Benachrichtigung an"""
     try:
@@ -108,7 +128,45 @@ class FTPManager:
             except Exception as e:
                 xbmc.log(f"Error closing FTP connection: {str(e)}", xbmc.LOGERROR)
             finally:
-                self._connection = Nonedef ftp_upload(ftp_manager: FTPManager, local_path: str, remote_path: str) -> bool:
+                self._connection = Nonedef ftp_upload_legacy(local_path, remote_path):
+    """Ursprüngliche FTP-Upload-Funktion für Rückwärtskompatibilität"""
+    try:
+        with ftplib.FTP(FTP_HOST) as ftp:
+            ftp.login(FTP_USER, FTP_PASS)
+            with open(local_path, 'rb') as file:
+                ftp.storbinary(f'STOR {remote_path}', file)
+        return True
+    except Exception as e:
+        xbmc.log(f"FTP upload failed: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def ftp_download_legacy(remote_path, local_path):
+    """Ursprüngliche FTP-Download-Funktion für Rückwärtskompatibilität"""
+    try:
+        with ftplib.FTP(FTP_HOST) as ftp:
+            ftp.login(FTP_USER, FTP_PASS)
+            with open(local_path, 'wb') as file:
+                ftp.retrbinary(f'RETR {remote_path}', file.write)
+        return True
+    except Exception as e:
+        xbmc.log(f"FTP download failed: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def ftp_folder_exists_legacy(folder_path):
+    """Ursprüngliche FTP-Ordner-Prüfung für Rückwärtskompatibilität"""
+    try:
+        with ftplib.FTP(FTP_HOST) as ftp:
+            ftp.login(FTP_USER, FTP_PASS)
+            ftp.cwd(folder_path)
+        return True
+    except ftplib.error_perm as e:
+        if '550' in str(e):
+            return False
+        else:
+            xbmc.log(f"FTP error: {str(e)}", xbmc.LOGERROR)
+            return False
+
+def ftp_upload(ftp_manager: FTPManager, local_path: str, remote_path: str) -> bool:
     """Lädt eine Datei zum FTP-Server hoch"""
     try:
         if not os.path.exists(local_path):
