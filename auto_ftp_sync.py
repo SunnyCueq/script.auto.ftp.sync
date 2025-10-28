@@ -471,7 +471,8 @@ def sync_static_favourites_optimized(ftp_manager: FTPManager) -> bool:
         xbmc.log(f"URLError downloading image: {e.reason}", xbmc.LOGERROR)
     except Exception as e:
         xbmc.log(f"Failed to download random image: {str(e)}", xbmc.LOGERROR)
-  def sync_favourites():
+
+def sync_favourites():
     """Hauptfunktion für die Synchronisation der Favoriten (ursprüngliche Version)"""
     if not CUSTOM_FOLDER:
         show_notification(30023, 5000)  # Ein benutzerdefinierter Ordnername ist erforderlich
