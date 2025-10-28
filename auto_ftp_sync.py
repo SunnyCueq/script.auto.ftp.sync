@@ -8,8 +8,11 @@ import xbmcaddon
 import xbmcvfs
 import sqlite3
 import time
+import json
+import hashlib
 from contextlib import contextmanager
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
+from datetime import datetime
 
 # Einstellungen laden
 ADDON = xbmcaddon.Addon()
@@ -90,6 +93,139 @@ def show_notification(message_id: int, duration: int = 5000, **kwargs) -> None:
     except Exception as e:
         xbmc.log(f"Error showing notification: {str(e)}", xbmc.LOGERROR)
 
+def refresh_favourites_ui():
+    """Aktualisiert die Favoriten-UI sofort ohne Neustart"""
+    try:
+        # Lösche den Favoriten-Cache
+        xbmc.executebuiltin('ClearFavouritesCache()')
+        
+        # Aktualisiere die Favoriten-Liste
+        xbmc.executebuiltin('ReloadSkin()')
+        
+        # Aktualisiere den aktuellen Container
+        xbmc.executebuiltin('Container.Refresh()')
+        
+        # Aktualisiere die Favoriten-Ansicht spezifisch
+        xbmc.executebuiltin('UpdateLibrary(video)')
+        
+        xbmc.log("Favourites UI refreshed successfully", xbmc.LOGINFO)
+        return True
+    except Exception as e:
+        xbmc.log(f"Error refreshing favourites UI: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def detect_system_type():
+    """Erkennt automatisch, ob es sich um Haupt- oder Subsystem handelt"""
+    try:
+        # Prüfe, ob bereits eine Konfiguration existiert
+        if config.custom_folder and config.ftp_host:
+            # Versuche, eine Verbindung zum FTP-Server herzustellen
+            with ftplib.FTP(config.ftp_host) as ftp:
+                ftp.login(config.ftp_user, config.ftp_pass)
+                
+                # Prüfe, ob bereits ein Hauptsystem existiert
+                main_system_marker = f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}/.main_system"
+                
+                try:
+                    ftp.cwd(main_system_marker)
+                    # Hauptsystem existiert bereits
+                    return False  # Dieses System wird Subsystem
+                except:
+                    # Kein Hauptsystem gefunden, dieses wird das Hauptsystem
+                    return True
+    except Exception as e:
+        xbmc.log(f"Error detecting system type: {str(e)}", xbmc.LOGERROR)
+        # Fallback: Verwende die aktuelle Einstellung
+        return config.is_main_system
+    
+    return config.is_main_system
+
+
+class SyncManager:
+    """Verwaltet die echte bidirektionale Synchronisation"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.sync_state_file = os.path.join(
+            xbmcvfs.translatePath('special://userdata/addon_data/script.auto.ftp.sync'),
+            'sync_state.json'
+        )
+        self.ensure_sync_dir()
+    
+    def ensure_sync_dir(self):
+        """Stellt sicher, dass das Sync-Verzeichnis existiert"""
+        sync_dir = os.path.dirname(self.sync_state_file)
+        if not os.path.exists(sync_dir):
+            os.makedirs(sync_dir, exist_ok=True)
+    
+    def get_file_hash(self, file_path: str) -> str:
+        """Berechnet den Hash einer Datei"""
+        if not os.path.exists(file_path):
+            return ""
+        try:
+            with open(file_path, 'rb') as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except:
+            return ""
+    
+    def get_sync_state(self) -> Dict:
+        """Lädt den aktuellen Synchronisationsstatus"""
+        try:
+            if os.path.exists(self.sync_state_file):
+                with open(self.sync_state_file, 'r') as f:
+                    return json.load(f)
+        except:
+            pass
+        return {}
+    
+    def save_sync_state(self, state: Dict):
+        """Speichert den Synchronisationsstatus"""
+        try:
+            with open(self.sync_state_file, 'w') as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            xbmc.log(f"Error saving sync state: {str(e)}", xbmc.LOGERROR)
+    
+    def needs_sync(self, local_path: str, remote_path: str) -> bool:
+        """Prüft, ob eine Datei synchronisiert werden muss"""
+        state = self.get_sync_state()
+        local_hash = self.get_file_hash(local_path)
+        
+        # Prüfe, ob sich die lokale Datei geändert hat
+        if state.get(local_path, {}).get('local_hash') != local_hash:
+            return True
+        
+        # Prüfe, ob die Remote-Datei neuer ist
+        remote_timestamp = state.get(remote_path, {}).get('timestamp', 0)
+        local_timestamp = state.get(local_path, {}).get('timestamp', 0)
+        
+        return remote_timestamp > local_timestamp
+    
+    def update_sync_state(self, local_path: str, remote_path: str, is_upload: bool):
+        """Aktualisiert den Synchronisationsstatus"""
+        state = self.get_sync_state()
+        timestamp = time.time()
+        
+        if is_upload:
+            state[local_path] = {
+                'local_hash': self.get_file_hash(local_path),
+                'timestamp': timestamp
+            }
+            state[remote_path] = {
+                'remote_hash': self.get_file_hash(local_path),
+                'timestamp': timestamp
+            }
+        else:
+            state[local_path] = {
+                'local_hash': self.get_file_hash(local_path),
+                'timestamp': timestamp
+            }
+            state[remote_path] = {
+                'remote_hash': self.get_file_hash(local_path),
+                'timestamp': timestamp
+            }
+        
+        self.save_sync_state(state)
 
 class FTPManager:
     """Verwaltet FTP-Verbindungen mit Wiederverwendung"""
@@ -348,6 +484,136 @@ def sync_static_favourites_optimized(ftp_manager: FTPManager) -> bool:
     sync_standard_favourites()
     sync_static_favourites()
 
+def sync_favourites_real():
+    """Echte bidirektionale Synchronisation mit sofortiger UI-Aktualisierung"""
+    try:
+        if not config.custom_folder:
+            show_notification(30023, 5000)  # Ein benutzerdefinierter Ordnername ist erforderlich
+            return False
+
+        # Erkenne automatisch den Systemtyp
+        is_main = detect_system_type()
+        xbmc.log(f"System type detected: {'Main' if is_main else 'Sub'}", xbmc.LOGINFO)
+        
+        # Erstelle Sync-Manager
+        sync_manager = SyncManager(config)
+        ftp_manager = FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
+        
+        try:
+            # Prüfe, ob der Ordner existiert
+            if not ftp_folder_exists(ftp_manager, f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}"):
+                show_notification(30024, 5000, folder=config.custom_folder)
+                return False
+
+            # Markiere Hauptsystem
+            if is_main:
+                mark_main_system(ftp_manager)
+
+            # Synchronisiere Standard-Favoriten
+            if sync_standard_favourites_real(sync_manager, ftp_manager, is_main):
+                xbmc.log("Standard favourites synced successfully", xbmc.LOGINFO)
+            else:
+                xbmc.log("Standard favourites sync failed", xbmc.LOGWARNING)
+
+            # Synchronisiere statische Favoriten
+            if sync_static_favourites_real(sync_manager, ftp_manager, is_main):
+                xbmc.log("Static favourites synced successfully", xbmc.LOGINFO)
+            else:
+                xbmc.log("Static favourites sync failed", xbmc.LOGWARNING)
+
+            # Aktualisiere UI sofort
+            if refresh_favourites_ui():
+                show_notification(30028, 5000)  # Synchronisation abgeschlossen
+                return True
+            else:
+                show_notification(30028, 5000)  # Synchronisation abgeschlossen, aber UI-Update fehlgeschlagen
+                return True
+                
+        finally:
+            ftp_manager.close()
+            
+    except Exception as e:
+        xbmc.log(f"Error in real sync: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def mark_main_system(ftp_manager: FTPManager):
+    """Markiert dieses System als Hauptsystem"""
+    try:
+        main_system_marker = f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}/.main_system"
+        with ftp_manager.get_connection() as ftp:
+            # Erstelle eine Marker-Datei
+            marker_content = f"Main system: {xbmc.getInfoLabel('System.ComputerName')}\nTimestamp: {time.time()}"
+            ftp.storbinary(f'STOR {main_system_marker}', marker_content.encode())
+        xbmc.log("Marked as main system", xbmc.LOGINFO)
+    except Exception as e:
+        xbmc.log(f"Error marking main system: {str(e)}", xbmc.LOGERROR)
+
+def sync_standard_favourites_real(sync_manager: SyncManager, ftp_manager: FTPManager, is_main: bool) -> bool:
+    """Echte Synchronisation der Standard-Favoriten"""
+    try:
+        local_path = config.local_favourites
+        remote_path = config.ftp_path
+        
+        if is_main:
+            # Hauptsystem: Upload wenn sich etwas geändert hat
+            if sync_manager.needs_sync(local_path, remote_path):
+                if ftp_upload(ftp_manager, local_path, remote_path):
+                    sync_manager.update_sync_state(local_path, remote_path, True)
+                    xbmc.log("Uploaded standard favourites", xbmc.LOGINFO)
+                    return True
+        else:
+            # Subsystem: Download wenn Remote neuer ist
+            if sync_manager.needs_sync(local_path, remote_path):
+                if ftp_download(ftp_manager, remote_path, local_path):
+                    sync_manager.update_sync_state(local_path, remote_path, False)
+                    xbmc.log("Downloaded standard favourites", xbmc.LOGINFO)
+                    return True
+        
+        return True
+    except Exception as e:
+        xbmc.log(f"Error syncing standard favourites: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def sync_static_favourites_real(sync_manager: SyncManager, ftp_manager: FTPManager, is_main: bool) -> bool:
+    """Echte Synchronisation der statischen Favoriten"""
+    success = True
+    try:
+        for folder in config.static_folders:
+            if not folder:
+                continue
+                
+            local_path = os.path.join(config.super_favourites_path, folder, 'favourites.xml')
+            remote_path = f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}/{folder}/favourites.xml"
+            
+            if is_main:
+                # Hauptsystem: Upload wenn sich etwas geändert hat
+                if sync_manager.needs_sync(local_path, remote_path):
+                    if ftp_upload(ftp_manager, local_path, remote_path):
+                        sync_manager.update_sync_state(local_path, remote_path, True)
+                        xbmc.log(f"Uploaded static favourites: {folder}", xbmc.LOGINFO)
+                    else:
+                        success = False
+            else:
+                # Subsystem: Download wenn Remote neuer ist
+                if sync_manager.needs_sync(local_path, remote_path):
+                    if ftp_download(ftp_manager, remote_path, local_path):
+                        sync_manager.update_sync_state(local_path, remote_path, False)
+                        xbmc.log(f"Downloaded static favourites: {folder}", xbmc.LOGINFO)
+                    else:
+                        success = False
+                        
+                # Überschreiben falls aktiviert
+                if config.overwrite_static and folder == config.specific_custom_folder:
+                    specific_remote_path = f"/{config.ftp_base_path}/auto_fav_sync/{config.specific_custom_folder}/favourites.xml"
+                    if ftp_download(ftp_manager, specific_remote_path, local_path):
+                        sync_manager.update_sync_state(local_path, specific_remote_path, False)
+                        xbmc.log(f"Overwritten static favourites: {folder}", xbmc.LOGINFO)
+        
+        return success
+    except Exception as e:
+        xbmc.log(f"Error syncing static favourites: {str(e)}", xbmc.LOGERROR)
+        return False
+
 def sync_favourites_optimized() -> bool:
     """Hauptfunktion für die Synchronisation der Favoriten (optimierte Version)"""
     try:
@@ -383,7 +649,13 @@ def sync_favourites_optimized() -> bool:
         xbmc.log(f"Error in sync_favourites: {str(e)}", xbmc.LOGERROR)
         return False
 
-# Hauptausführung - Ursprüngliche Version
+# Hauptausführung - Echte Synchronisation
 if ENABLED:
-    sync_favourites()
+    # Verwende die echte Synchronisation mit sofortiger UI-Aktualisierung
+    if sync_favourites_real():
+        xbmc.log("Real sync completed successfully", xbmc.LOGINFO)
+    else:
+        xbmc.log("Real sync failed, falling back to legacy sync", xbmc.LOGWARNING)
+        sync_favourites()  # Fallback auf ursprüngliche Version
+    
     download_random_image()
