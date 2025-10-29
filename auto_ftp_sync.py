@@ -18,16 +18,18 @@ from datetime import datetime
 try:
     import paramiko
     SFTP_AVAILABLE = True
+    xbmc.log("SFTP support loaded successfully", xbmc.LOGINFO)
 except ImportError:
     SFTP_AVAILABLE = False
-    xbmc.log("SFTP not available - paramiko not installed", xbmc.LOGWARNING)
+    xbmc.log("SFTP not available - paramiko not installed. Install with: pip install paramiko", xbmc.LOGWARNING)
 
 try:
     import smbclient
     SMB_AVAILABLE = True
+    xbmc.log("SMB support loaded successfully", xbmc.LOGINFO)
 except ImportError:
     SMB_AVAILABLE = False
-    xbmc.log("SMB not available - smbclient not installed", xbmc.LOGWARNING)
+    xbmc.log("SMB not available - smbclient not installed. Install with: pip install smbprotocol", xbmc.LOGWARNING)
 
 # Einstellungen laden
 ADDON = xbmcaddon.Addon()
@@ -781,6 +783,23 @@ class SMBManager(ConnectionManager):
             except Exception as e:
                 xbmc.log(f"Error creating remote directory {remote_dir}: {str(e)}", xbmc.LOGERROR)
 
+def get_protocol_status() -> Dict[str, bool]:
+    """Gibt den Status der verfügbaren Protokolle zurück"""
+    return {
+        "FTP": True,  # FTP ist immer verfügbar
+        "SFTP": SFTP_AVAILABLE,
+        "SMB": SMB_AVAILABLE
+    }
+
+def log_protocol_status():
+    """Protokolliert den Status aller verfügbaren Protokolle"""
+    status = get_protocol_status()
+    xbmc.log("=== Protokoll-Status ===", xbmc.LOGINFO)
+    for protocol, available in status.items():
+        status_text = "verfügbar" if available else "nicht verfügbar"
+        xbmc.log(f"{protocol}: {status_text}", xbmc.LOGINFO)
+    xbmc.log("=======================", xbmc.LOGINFO)
+
 def create_connection_manager(config: Config) -> ConnectionManager:
     """Factory-Funktion für die Erstellung von Verbindungsmanagern"""
     if config.protocol == 0:  # FTP
@@ -1209,6 +1228,9 @@ def sync_favourites_optimized() -> bool:
 
 # Hauptausführung - Echte Synchronisation
 if ENABLED:
+    # Protokoll-Status loggen
+    log_protocol_status()
+    
     # Verwende die echte Synchronisation mit sofortiger UI-Aktualisierung
     if sync_favourites_real():
         xbmc.log("Real sync completed successfully", xbmc.LOGINFO)
@@ -1277,4 +1299,35 @@ def categorize_existing_favourites() -> bool:
         
     except Exception as e:
         xbmc.log(f"Error categorizing favourites: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def test_connection() -> bool:
+    """Testet die Verbindung mit dem konfigurierten Protokoll"""
+    try:
+        xbmc.log("Testing connection...", xbmc.LOGINFO)
+        
+        # Protokoll-Status anzeigen
+        log_protocol_status()
+        
+        # Verbindungs-Manager erstellen
+        connection_manager = create_connection_manager(config)
+        
+        try:
+            # Teste Verbindung
+            test_folder = f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}"
+            if folder_exists(connection_manager, test_folder):
+                xbmc.log("Connection test successful!", xbmc.LOGINFO)
+                show_notification(30028, 3000)  # Synchronisation abgeschlossen
+                return True
+            else:
+                xbmc.log("Connection test failed - folder not accessible", xbmc.LOGERROR)
+                show_notification(30029, 5000)  # Synchronisation fehlgeschlagen
+                return False
+                
+        finally:
+            connection_manager.close()
+            
+    except Exception as e:
+        xbmc.log(f"Connection test error: {str(e)}", xbmc.LOGERROR)
+        show_notification(30029, 5000)  # Synchronisation fehlgeschlagen
         return False
