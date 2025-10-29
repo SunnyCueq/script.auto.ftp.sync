@@ -1,0 +1,6 @@
+# KODi Plugin Dependencies
+# Für SFTP-Unterstützung
+paramiko>=2.7.0
+
+# Für SMB-Unterstützung  
+smbprotocol>=1.0.0

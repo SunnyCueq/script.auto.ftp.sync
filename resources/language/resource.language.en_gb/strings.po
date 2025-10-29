@@ -30,10 +30,29 @@ msgstr "Custom Folder Name"
 
 msgctxt "#30005"
 msgid "Specific Custom Folder for Overwrite"
-msgstr "Specific Custom Folder for Overwrite"
+msgstr "Specifimsgctxt "#30006"
+msgid "Connection Settings"
+msgstr "Connection Settings"
 
-msgctxt "#30006"
-msgid "FTP Settings"
+msgctxt "#30030"
+msgid "Protocol"
+msgstr "Protocol"
+
+msgctxt "#30031"
+msgid "SFTP Port"
+msgstr "SFTP Port"
+
+msgctxt "#30032"
+msgid "SFTP Key File"
+msgstr "SFTP Key File"
+
+msgctxt "#30033"
+msgid "SMB Share"
+msgstr "SMB Share"
+
+msgctxt "#30034"
+msgid "SMB Domain"
+msgstr "SMB Domain"FTP Settings"
 msgstr "FTP Settings"
 
 msgctxt "#30007"

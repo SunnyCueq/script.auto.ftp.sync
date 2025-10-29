@@ -14,6 +14,21 @@ from contextlib import contextmanager
 from typing import Optional, List, Tuple, Dict
 from datetime import datetime
 
+# SFTP und SMB Imports
+try:
+    import paramiko
+    SFTP_AVAILABLE = True
+except ImportError:
+    SFTP_AVAILABLE = False
+    xbmc.log("SFTP not available - paramiko not installed", xbmc.LOGWARNING)
+
+try:
+    import smbclient
+    SMB_AVAILABLE = True
+except ImportError:
+    SMB_AVAILABLE = False
+    xbmc.log("SMB not available - smbclient not installed", xbmc.LOGWARNING)
+
 # Einstellungen laden
 ADDON = xbmcaddon.Addon()
 
@@ -32,6 +47,13 @@ class Config:
         self.ftp_pass = ADDON.getSettingString('ftp_pass')
         self.static_folders = [f.strip() for f in ADDON.getSettingString('static_folders').split(',') if f.strip()]
         self.enable_image_rotation = ADDON.getSettingBool('enable_image_rotation')
+        
+        # Protokoll-Einstellungen
+        self.protocol = ADDON.getSettingInt('protocol')  # 0=FTP, 1=SFTP, 2=SMB
+        self.sftp_port = ADDON.getSettingInt('sftp_port')
+        self.sftp_key_file = ADDON.getSettingString('sftp_key_file')
+        self.smb_share = ADDON.getSettingString('smb_share')
+        self.smb_domain = ADDON.getSettingString('smb_domain')
         
         # Kategorisierungs-Einstellungen
         self.enable_categories = ADDON.getSettingBool('enable_categories')
@@ -405,13 +427,41 @@ class SyncManager:
         
         self.save_sync_state(state)
 
-class FTPManager:
-    """Verwaltet FTP-Verbindungen mit Wiederverwendung"""
+class ConnectionManager:
+    """Abstrakte Basisklasse für alle Verbindungsmanager"""
     
-    def __init__(self, host: str, user: str, password: str):
+    def __init__(self, host: str, user: str, password: str, **kwargs):
         self.host = host
         self.user = user
         self.password = password
+        self._connection = None
+    
+    @contextmanager
+    def get_connection(self):
+        """Kontextmanager für Verbindungen - muss von Unterklassen implementiert werden"""
+        raise NotImplementedError
+    
+    def close(self):
+        """Schließt die Verbindung - muss von Unterklassen implementiert werden"""
+        raise NotImplementedError
+    
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        """Lädt eine Datei hoch - muss von Unterklassen implementiert werden"""
+        raise NotImplementedError
+    
+    def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Lädt eine Datei herunter - muss von Unterklassen implementiert werden"""
+        raise NotImplementedError
+    
+    def folder_exists(self, folder_path: str) -> bool:
+        """Prüft, ob ein Ordner existiert - muss von Unterklassen implementiert werden"""
+        raise NotImplementedError
+
+class FTPManager(ConnectionManager):
+    """Verwaltet FTP-Verbindungen mit Wiederverwendung"""
+    
+    def __init__(self, host: str, user: str, password: str, **kwargs):
+        super().__init__(host, user, password, **kwargs)
         self._connection: Optional[ftplib.FTP] = None
     
     @contextmanager
@@ -443,6 +493,323 @@ class FTPManager:
                 xbmc.log(f"Error closing FTP connection: {str(e)}", xbmc.LOGERROR)
             finally:
                 self._connection = None
+    
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        """Lädt eine Datei zum FTP-Server hoch"""
+        try:
+            if not os.path.exists(local_path):
+                xbmc.log(f"Local file does not exist: {local_path}", xbmc.LOGERROR)
+                return False
+                
+            with self.get_connection() as ftp:
+                with open(local_path, 'rb') as file:
+                    ftp.storbinary(f'STOR {remote_path}', file)
+            xbmc.log(f"Successfully uploaded: {local_path} -> {remote_path}", xbmc.LOGINFO)
+            return True
+        except Exception as e:
+            xbmc.log(f"FTP upload failed: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Lädt eine Datei vom FTP-Server herunter"""
+        try:
+            with self.get_connection() as ftp:
+                with open(local_path, 'wb') as file:
+                    ftp.retrbinary(f'RETR {remote_path}', file.write)
+            xbmc.log(f"Successfully downloaded: {remote_path} -> {local_path}", xbmc.LOGINFO)
+            return True
+        except Exception as e:
+            xbmc.log(f"FTP download failed: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def folder_exists(self, folder_path: str) -> bool:
+        """Prüft, ob ein Ordner auf dem FTP-Server existiert"""
+        try:
+            with self.get_connection() as ftp:
+                ftp.cwd(folder_path)
+            return True
+        except ftplib.error_perm as e:
+            if '550' in str(e):
+                return False
+            else:
+                xbmc.log(f"FTP error: {str(e)}", xbmc.LOGERROR)
+                return False
+
+class SFTPManager(ConnectionManager):
+    """Verwaltet SFTP-Verbindungen mit Wiederverwendung"""
+    
+    def __init__(self, host: str, user: str, password: str, port: int = 22, key_file: str = None, **kwargs):
+        super().__init__(host, user, password, **kwargs)
+        self.port = port
+        self.key_file = key_file
+        self._connection: Optional[paramiko.SSHClient] = None
+        self._sftp: Optional[paramiko.SFTPClient] = None
+    
+    @contextmanager
+    def get_connection(self):
+        """Kontextmanager für SFTP-Verbindungen"""
+        try:
+            if self._connection is None:
+                if not SFTP_AVAILABLE:
+                    raise Exception("SFTP not available - paramiko not installed")
+                
+                self._connection = paramiko.SSHClient()
+                self._connection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                
+                # Authentifizierung
+                if self.key_file and os.path.exists(self.key_file):
+                    # Schlüssel-basierte Authentifizierung
+                    self._connection.connect(
+                        hostname=self.host,
+                        port=self.port,
+                        username=self.user,
+                        key_filename=self.key_file
+                    )
+                else:
+                    # Passwort-basierte Authentifizierung
+                    self._connection.connect(
+                        hostname=self.host,
+                        port=self.port,
+                        username=self.user,
+                        password=self.password
+                    )
+                
+                self._sftp = self._connection.open_sftp()
+                xbmc.log("SFTP connection established", xbmc.LOGINFO)
+            
+            yield self._sftp
+        except Exception as e:
+            xbmc.log(f"SFTP connection error: {str(e)}", xbmc.LOGERROR)
+            if self._connection:
+                try:
+                    self._connection.close()
+                except:
+                    pass
+                self._connection = None
+                self._sftp = None
+            raise
+    
+    def close(self):
+        """Schließt die SFTP-Verbindung"""
+        if self._sftp:
+            try:
+                self._sftp.close()
+            except:
+                pass
+            self._sftp = None
+        
+        if self._connection:
+            try:
+                self._connection.close()
+                xbmc.log("SFTP connection closed", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"Error closing SFTP connection: {str(e)}", xbmc.LOGERROR)
+            finally:
+                self._connection = None
+    
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        """Lädt eine Datei zum SFTP-Server hoch"""
+        try:
+            if not os.path.exists(local_path):
+                xbmc.log(f"Local file does not exist: {local_path}", xbmc.LOGERROR)
+                return False
+            
+            # Stelle sicher, dass der Remote-Ordner existiert
+            remote_dir = os.path.dirname(remote_path)
+            if remote_dir and remote_dir != '/':
+                self._ensure_remote_directory(remote_dir)
+            
+            with self.get_connection() as sftp:
+                sftp.put(local_path, remote_path)
+            xbmc.log(f"Successfully uploaded: {local_path} -> {remote_path}", xbmc.LOGINFO)
+            return True
+        except Exception as e:
+            xbmc.log(f"SFTP upload failed: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Lädt eine Datei vom SFTP-Server herunter"""
+        try:
+            # Stelle sicher, dass der lokale Ordner existiert
+            local_dir = os.path.dirname(local_path)
+            if local_dir and not os.path.exists(local_dir):
+                os.makedirs(local_dir, exist_ok=True)
+            
+            with self.get_connection() as sftp:
+                sftp.get(remote_path, local_path)
+            xbmc.log(f"Successfully downloaded: {remote_path} -> {local_path}", xbmc.LOGINFO)
+            return True
+        except Exception as e:
+            xbmc.log(f"SFTP download failed: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def folder_exists(self, folder_path: str) -> bool:
+        """Prüft, ob ein Ordner auf dem SFTP-Server existiert"""
+        try:
+            with self.get_connection() as sftp:
+                sftp.stat(folder_path)
+            return True
+        except FileNotFoundError:
+            return False
+        except Exception as e:
+            xbmc.log(f"SFTP error: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def _ensure_remote_directory(self, remote_dir: str):
+        """Stellt sicher, dass ein Remote-Ordner existiert"""
+        try:
+            with self.get_connection() as sftp:
+                sftp.stat(remote_dir)
+        except FileNotFoundError:
+            # Ordner existiert nicht, erstelle ihn
+            try:
+                parent_dir = os.path.dirname(remote_dir)
+                if parent_dir and parent_dir != '/':
+                    self._ensure_remote_directory(parent_dir)
+                sftp.mkdir(remote_dir)
+            except Exception as e:
+                xbmc.log(f"Error creating remote directory {remote_dir}: {str(e)}", xbmc.LOGERROR)
+
+class SMBManager(ConnectionManager):
+    """Verwaltet SMB-Verbindungen mit Wiederverwendung"""
+    
+    def __init__(self, host: str, user: str, password: str, share: str, domain: str = None, **kwargs):
+        super().__init__(host, user, password, **kwargs)
+        self.share = share
+        self.domain = domain
+        self._connection = None
+    
+    @contextmanager
+    def get_connection(self):
+        """Kontextmanager für SMB-Verbindungen"""
+        try:
+            if not SMB_AVAILABLE:
+                raise Exception("SMB not available - smbclient not installed")
+            
+            # SMB-Verbindung herstellen
+            smbclient.register_session(
+                server=self.host,
+                username=self.user,
+                password=self.password,
+                domain=self.domain
+            )
+            
+            xbmc.log("SMB connection established", xbmc.LOGINFO)
+            yield None  # SMB verwendet globale Funktionen
+        except Exception as e:
+            xbmc.log(f"SMB connection error: {str(e)}", xbmc.LOGERROR)
+            raise
+    
+    def close(self):
+        """Schließt die SMB-Verbindung"""
+        try:
+            smbclient.reset_connection_cache()
+            xbmc.log("SMB connection closed", xbmc.LOGINFO)
+        except Exception as e:
+            xbmc.log(f"Error closing SMB connection: {str(e)}", xbmc.LOGERROR)
+    
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        """Lädt eine Datei zum SMB-Server hoch"""
+        try:
+            if not os.path.exists(local_path):
+                xbmc.log(f"Local file does not exist: {local_path}", xbmc.LOGERROR)
+                return False
+            
+            # Stelle sicher, dass der Remote-Ordner existiert
+            remote_dir = os.path.dirname(remote_path)
+            if remote_dir and remote_dir != '/':
+                self._ensure_remote_directory(remote_dir)
+            
+            with self.get_connection():
+                smb_path = f"\\\\{self.host}\\{self.share}\\{remote_path}"
+                with open(local_path, 'rb') as local_file:
+                    with smbclient.open_file(smb_path, mode='wb') as remote_file:
+                        remote_file.write(local_file.read())
+            
+            xbmc.log(f"Successfully uploaded: {local_path} -> {smb_path}", xbmc.LOGINFO)
+            return True
+        except Exception as e:
+            xbmc.log(f"SMB upload failed: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Lädt eine Datei vom SMB-Server herunter"""
+        try:
+            # Stelle sicher, dass der lokale Ordner existiert
+            local_dir = os.path.dirname(local_path)
+            if local_dir and not os.path.exists(local_dir):
+                os.makedirs(local_dir, exist_ok=True)
+            
+            with self.get_connection():
+                smb_path = f"\\\\{self.host}\\{self.share}\\{remote_path}"
+                with smbclient.open_file(smb_path, mode='rb') as remote_file:
+                    with open(local_path, 'wb') as local_file:
+                        local_file.write(remote_file.read())
+            
+            xbmc.log(f"Successfully downloaded: {smb_path} -> {local_path}", xbmc.LOGINFO)
+            return True
+        except Exception as e:
+            xbmc.log(f"SMB download failed: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def folder_exists(self, folder_path: str) -> bool:
+        """Prüft, ob ein Ordner auf dem SMB-Server existiert"""
+        try:
+            with self.get_connection():
+                smb_path = f"\\\\{self.host}\\{self.share}\\{folder_path}"
+                smbclient.listdir(smb_path)
+            return True
+        except FileNotFoundError:
+            return False
+        except Exception as e:
+            xbmc.log(f"SMB error: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def _ensure_remote_directory(self, remote_dir: str):
+        """Stellt sicher, dass ein Remote-Ordner existiert"""
+        try:
+            with self.get_connection():
+                smb_path = f"\\\\{self.host}\\{self.share}\\{remote_dir}"
+                smbclient.listdir(smb_path)
+        except FileNotFoundError:
+            # Ordner existiert nicht, erstelle ihn
+            try:
+                parent_dir = os.path.dirname(remote_dir)
+                if parent_dir and parent_dir != '/':
+                    self._ensure_remote_directory(parent_dir)
+                smbclient.makedirs(smb_path)
+            except Exception as e:
+                xbmc.log(f"Error creating remote directory {remote_dir}: {str(e)}", xbmc.LOGERROR)
+
+def create_connection_manager(config: Config) -> ConnectionManager:
+    """Factory-Funktion für die Erstellung von Verbindungsmanagern"""
+    if config.protocol == 0:  # FTP
+        return FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
+    elif config.protocol == 1:  # SFTP
+        if not SFTP_AVAILABLE:
+            xbmc.log("SFTP not available, falling back to FTP", xbmc.LOGWARNING)
+            return FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
+        return SFTPManager(
+            config.ftp_host, 
+            config.ftp_user, 
+            config.ftp_pass,
+            port=config.sftp_port,
+            key_file=config.sftp_key_file
+        )
+    elif config.protocol == 2:  # SMB
+        if not SMB_AVAILABLE:
+            xbmc.log("SMB not available, falling back to FTP", xbmc.LOGWARNING)
+            return FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
+        return SMBManager(
+            config.ftp_host,
+            config.ftp_user,
+            config.ftp_pass,
+            share=config.smb_share,
+            domain=config.smb_domain
+        )
+    else:
+        xbmc.log(f"Unknown protocol {config.protocol}, falling back to FTP", xbmc.LOGWARNING)
+        return FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
 
 def ftp_upload_legacy(local_path, remote_path):
     """Ursprüngliche FTP-Upload-Funktion für Rückwärtskompatibilität"""
@@ -482,52 +849,30 @@ def ftp_folder_exists_legacy(folder_path):
             xbmc.log(f"FTP error: {str(e)}", xbmc.LOGERROR)
             return False
 
-def ftp_upload(ftp_manager: FTPManager, local_path: str, remote_path: str) -> bool:
-    """Lädt eine Datei zum FTP-Server hoch"""
-    try:
-        if not os.path.exists(local_path):
-            xbmc.log(f"Local file does not exist: {local_path}", xbmc.LOGERROR)
-            return False
-            
-        with ftp_manager.get_connection() as ftp:
-            with open(local_path, 'rb') as file:
-                ftp.storbinary(f'STOR {remote_path}', file)
-        xbmc.log(f"Successfully uploaded: {local_path} -> {remote_path}", xbmc.LOGINFO)
-        return True
-    except Exception as e:
-        xbmc.log(f"FTP upload failed: {str(e)}", xbmc.LOGERROR)
-        return False
+def upload_file(connection_manager: ConnectionManager, local_path: str, remote_path: str) -> bool:
+    """Lädt eine Datei zum Server hoch (universell für alle Protokolle)"""
+    return connection_manager.upload_file(local_path, remote_path)
 
-def ftp_download(ftp_manager: FTPManager, remote_path: str, local_path: str) -> bool:
-    """Lädt eine Datei vom FTP-Server herunter"""
-    try:
-        # Stelle sicher, dass das Verzeichnis existiert
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        
-        with ftp_manager.get_connection() as ftp:
-            with open(local_path, 'wb') as file:
-                ftp.retrbinary(f'RETR {remote_path}', file.write)
-        xbmc.log(f"Successfully downloaded: {remote_path} -> {local_path}", xbmc.LOGINFO)
-        return True
-    except Exception as e:
-        xbmc.log(f"FTP download failed: {str(e)}", xbmc.LOGERROR)
-        return False
+def download_file(connection_manager: ConnectionManager, remote_path: str, local_path: str) -> bool:
+    """Lädt eine Datei vom Server herunter (universell für alle Protokolle)"""
+    return connection_manager.download_file(remote_path, local_path)
 
-def ftp_folder_exists(ftp_manager: FTPManager, folder_path: str) -> bool:
-    """Prüft, ob ein Ordner auf dem FTP-Server existiert"""
-    try:
-        with ftp_manager.get_connection() as ftp:
-            ftp.cwd(folder_path)
-        return True
-    except ftplib.error_perm as e:
-        if '550' in str(e):
-            return False
-        else:
-            xbmc.log(f"FTP error checking folder: {str(e)}", xbmc.LOGERROR)
-            return False
-    except Exception as e:
-        xbmc.log(f"Unexpected error checking folder: {str(e)}", xbmc.LOGERROR)
-        return False
+def folder_exists(connection_manager: ConnectionManager, folder_path: str) -> bool:
+    """Prüft, ob ein Ordner auf dem Server existiert (universell für alle Protokolle)"""
+    return connection_manager.folder_exists(folder_path)
+
+# Rückwärtskompatibilität - Alte Funktionen
+def ftp_upload(connection_manager: ConnectionManager, local_path: str, remote_path: str) -> bool:
+    """Rückwärtskompatibilität für ftp_upload"""
+    return upload_file(connection_manager, local_path, remote_path)
+
+def ftp_download(connection_manager: ConnectionManager, remote_path: str, local_path: str) -> bool:
+    """Rückwärtskompatibilität für ftp_download"""
+    return download_file(connection_manager, remote_path, local_path)
+
+def ftp_folder_exists(connection_manager: ConnectionManager, folder_path: str) -> bool:
+    """Rückwärtskompatibilität für ftp_folder_exists"""
+    return folder_exists(connection_manager, folder_path)
 
 def sync_standard_favourites():
     """Synchronisiert Standard-Favoriten (ursprüngliche Funktion)"""
@@ -553,18 +898,18 @@ def sync_static_favourites():
                 specific_remote_static_path = f"/{FTP_BASE_PATH}/auto_fav_sync/{SPECIFIC_CUSTOM_FOLDER}/favourites.xml"
                 ftp_download_legacy(specific_remote_static_path, local_static_path)
 
-def sync_standard_favourites_optimized(ftp_manager: FTPManager) -> bool:
+def sync_standard_favourites_optimized(connection_manager: ConnectionManager) -> bool:
     """Synchronisiert Standard-Favoriten (optimierte Version)"""
     try:
         if config.is_main_system:
-            return ftp_upload(ftp_manager, config.local_favourites, config.ftp_path)
+            return upload_file(connection_manager, config.local_favourites, config.ftp_path)
         else:
-            return ftp_download(ftp_manager, config.ftp_path, config.local_favourites)
+            return download_file(connection_manager, config.ftp_path, config.local_favourites)
     except Exception as e:
         xbmc.log(f"Error syncing standard favourites: {str(e)}", xbmc.LOGERROR)
         return False
 
-def sync_static_favourites_optimized(ftp_manager: FTPManager) -> bool:
+def sync_static_favourites_optimized(connection_manager: ConnectionManager) -> bool:
     """Synchronisiert statische Favoriten (optimierte Version)"""
     success = True
     try:
@@ -576,16 +921,16 @@ def sync_static_favourites_optimized(ftp_manager: FTPManager) -> bool:
             remote_static_path = f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}/{folder}/favourites.xml"
             
             if config.is_main_system:
-                if not ftp_upload(ftp_manager, local_static_path, remote_static_path):
+                if not upload_file(connection_manager, local_static_path, remote_static_path):
                     success = False
             else:
-                if not ftp_download(ftp_manager, remote_static_path, local_static_path):
+                if not download_file(connection_manager, remote_static_path, local_static_path):
                     success = False
                     
                 # Überschreiben falls aktiviert
                 if config.overwrite_static and folder == config.specific_custom_folder:
                     specific_remote_static_path = f"/{config.ftp_base_path}/auto_fav_sync/{config.specific_custom_folder}/favourites.xml"
-                    if not ftp_download(ftp_manager, specific_remote_static_path, local_static_path):
+                    if not download_file(connection_manager, specific_remote_static_path, local_static_path):
                         success = False
                         
         return success
@@ -685,26 +1030,26 @@ def sync_favourites_real():
         # Erstelle Sync-Manager und Kategorie-Manager
         sync_manager = SyncManager(config)
         category_manager = FavouritesCategoryManager(config)
-        ftp_manager = FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
+        connection_manager = create_connection_manager(config)
         
         try:
             # Prüfe, ob der Ordner existiert
-            if not ftp_folder_exists(ftp_manager, f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}"):
+            if not folder_exists(connection_manager, f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}"):
                 show_notification(30024, 5000, folder=config.custom_folder)
                 return False
 
             # Markiere Hauptsystem
             if is_main:
-                mark_main_system(ftp_manager)
+                mark_main_system(connection_manager)
 
             # Synchronisiere Standard-Favoriten
-            if sync_standard_favourites_real(sync_manager, ftp_manager, is_main):
+            if sync_standard_favourites_real(sync_manager, connection_manager, is_main):
                 xbmc.log("Standard favourites synced successfully", xbmc.LOGINFO)
             else:
                 xbmc.log("Standard favourites sync failed", xbmc.LOGWARNING)
 
             # Synchronisiere statische Favoriten
-            if sync_static_favourites_real(sync_manager, ftp_manager, is_main):
+            if sync_static_favourites_real(sync_manager, connection_manager, is_main):
                 xbmc.log("Static favourites synced successfully", xbmc.LOGINFO)
             else:
                 xbmc.log("Static favourites sync failed", xbmc.LOGWARNING)
@@ -728,25 +1073,40 @@ def sync_favourites_real():
                 return True
                 
         finally:
-            ftp_manager.close()
+            connection_manager.close()
             
     except Exception as e:
         xbmc.log(f"Error in real sync: {str(e)}", xbmc.LOGERROR)
         return False
 
-def mark_main_system(ftp_manager: FTPManager):
+def mark_main_system(connection_manager: ConnectionManager):
     """Markiert dieses System als Hauptsystem"""
     try:
         main_system_marker = f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}/.main_system"
-        with ftp_manager.get_connection() as ftp:
-            # Erstelle eine Marker-Datei
-            marker_content = f"Main system: {xbmc.getInfoLabel('System.ComputerName')}\nTimestamp: {time.time()}"
-            ftp.storbinary(f'STOR {main_system_marker}', marker_content.encode())
-        xbmc.log("Marked as main system", xbmc.LOGINFO)
+        marker_content = f"Main system: {xbmc.getInfoLabel('System.ComputerName')}\\nTimestamp: {time.time()}"
+        
+        # Erstelle temporäre Datei für Upload
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as temp_file:
+            temp_file.write(marker_content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Lade Marker-Datei hoch
+            if connection_manager.upload_file(temp_file_path, main_system_marker):
+                xbmc.log("Marked as main system", xbmc.LOGINFO)
+            else:
+                xbmc.log("Failed to mark as main system", xbmc.LOGERROR)
+        finally:
+            # Lösche temporäre Datei
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
     except Exception as e:
         xbmc.log(f"Error marking main system: {str(e)}", xbmc.LOGERROR)
 
-def sync_standard_favourites_real(sync_manager: SyncManager, ftp_manager: FTPManager, is_main: bool) -> bool:
+def sync_standard_favourites_real(sync_manager: SyncManager, connection_manager: ConnectionManager, is_main: bool) -> bool:
     """Echte Synchronisation der Standard-Favoriten"""
     try:
         local_path = config.local_favourites
@@ -755,14 +1115,14 @@ def sync_standard_favourites_real(sync_manager: SyncManager, ftp_manager: FTPMan
         if is_main:
             # Hauptsystem: Upload wenn sich etwas geändert hat
             if sync_manager.needs_sync(local_path, remote_path):
-                if ftp_upload(ftp_manager, local_path, remote_path):
+                if upload_file(connection_manager, local_path, remote_path):
                     sync_manager.update_sync_state(local_path, remote_path, True)
                     xbmc.log("Uploaded standard favourites", xbmc.LOGINFO)
                     return True
         else:
             # Subsystem: Download wenn Remote neuer ist
             if sync_manager.needs_sync(local_path, remote_path):
-                if ftp_download(ftp_manager, remote_path, local_path):
+                if download_file(connection_manager, remote_path, local_path):
                     sync_manager.update_sync_state(local_path, remote_path, False)
                     xbmc.log("Downloaded standard favourites", xbmc.LOGINFO)
                     return True
@@ -772,7 +1132,7 @@ def sync_standard_favourites_real(sync_manager: SyncManager, ftp_manager: FTPMan
         xbmc.log(f"Error syncing standard favourites: {str(e)}", xbmc.LOGERROR)
         return False
 
-def sync_static_favourites_real(sync_manager: SyncManager, ftp_manager: FTPManager, is_main: bool) -> bool:
+def sync_static_favourites_real(sync_manager: SyncManager, connection_manager: ConnectionManager, is_main: bool) -> bool:
     """Echte Synchronisation der statischen Favoriten"""
     success = True
     try:
@@ -786,7 +1146,7 @@ def sync_static_favourites_real(sync_manager: SyncManager, ftp_manager: FTPManag
             if is_main:
                 # Hauptsystem: Upload wenn sich etwas geändert hat
                 if sync_manager.needs_sync(local_path, remote_path):
-                    if ftp_upload(ftp_manager, local_path, remote_path):
+                    if upload_file(connection_manager, local_path, remote_path):
                         sync_manager.update_sync_state(local_path, remote_path, True)
                         xbmc.log(f"Uploaded static favourites: {folder}", xbmc.LOGINFO)
                     else:
@@ -794,7 +1154,7 @@ def sync_static_favourites_real(sync_manager: SyncManager, ftp_manager: FTPManag
             else:
                 # Subsystem: Download wenn Remote neuer ist
                 if sync_manager.needs_sync(local_path, remote_path):
-                    if ftp_download(ftp_manager, remote_path, local_path):
+                    if download_file(connection_manager, remote_path, local_path):
                         sync_manager.update_sync_state(local_path, remote_path, False)
                         xbmc.log(f"Downloaded static favourites: {folder}", xbmc.LOGINFO)
                     else:
@@ -803,7 +1163,7 @@ def sync_static_favourites_real(sync_manager: SyncManager, ftp_manager: FTPManag
                 # Überschreiben falls aktiviert
                 if config.overwrite_static and folder == config.specific_custom_folder:
                     specific_remote_path = f"/{config.ftp_base_path}/auto_fav_sync/{config.specific_custom_folder}/favourites.xml"
-                    if ftp_download(ftp_manager, specific_remote_path, local_path):
+                    if download_file(connection_manager, specific_remote_path, local_path):
                         sync_manager.update_sync_state(local_path, specific_remote_path, False)
                         xbmc.log(f"Overwritten static favourites: {folder}", xbmc.LOGINFO)
         
@@ -819,20 +1179,20 @@ def sync_favourites_optimized() -> bool:
             show_notification(30023, 5000)  # Ein benutzerdefinierter Ordnername ist erforderlich
             return False
 
-        # Erstelle FTP-Manager
-        ftp_manager = FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
+        # Erstelle Verbindungs-Manager
+        connection_manager = create_connection_manager(config)
         
         try:
             # Prüfe, ob der Ordner existiert
-            if not ftp_folder_exists(ftp_manager, f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}"):
+            if not folder_exists(connection_manager, f"/{config.ftp_base_path}/auto_fav_sync/{config.custom_folder}"):
                 show_notification(30024, 5000, folder=config.custom_folder)  # Benutzerdefinierter Ordner nicht gefunden
                 return False
 
             # Synchronisiere Favoriten
             success = True
-            if not sync_standard_favourites_optimized(ftp_manager):
+            if not sync_standard_favourites_optimized(connection_manager):
                 success = False
-            if not sync_static_favourites_optimized(ftp_manager):
+            if not sync_static_favourites_optimized(connection_manager):
                 success = False
                 
             if success:
@@ -841,7 +1201,7 @@ def sync_favourites_optimized() -> bool:
             return success
             
         finally:
-            ftp_manager.close()
+            connection_manager.close()
             
     except Exception as e:
         xbmc.log(f"Error in sync_favourites: {str(e)}", xbmc.LOGERROR)
