@@ -30,10 +30,29 @@ msgstr "Benutzerdefinierter Ordnername"
 
 msgctxt "#30005"
 msgid "Specific Custom Folder for Overwrite"
-msgstr "Spezifischer benutzerdefinierter Ordner zum Überschreiben"
+msgstr "Spezifischer benutzerdefiniemsgctxt "#30006"
+msgid "Connection Settings"
+msgstr "Verbindungseinstellungen"
 
-msgctxt "#30006"
-msgid "FTP Settings"
+msgctxt "#30030"
+msgid "Protocol"
+msgstr "Protokoll"
+
+msgctxt "#30031"
+msgid "SFTP Port"
+msgstr "SFTP-Port"
+
+msgctxt "#30032"
+msgid "SFTP Key File"
+msgstr "SFTP-Schlüsseldatei"
+
+msgctxt "#30033"
+msgid "SMB Share"
+msgstr "SMB-Freigabe"
+
+msgctxt "#30034"
+msgid "SMB Domain"
+msgstr "SMB-Domäne"ettings"
 msgstr "FTP-Einstellungen"
 
 msgctxt "#30007"
