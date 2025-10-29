@@ -432,7 +432,9 @@ def clear_texture_cache() -> bool:
         return True
     except Exception as e:
         xbmc.log(f"Error clearing texture cache: {str(e)}", xbmc.LOGERROR)
-        return Falsedef download_random_image() -> bool:
+        return False
+
+def download_random_image() -> bool:
     """Lädt ein zufälliges Bild herunter und speichert es"""
     if not config.image_list_url or not config.enable_image_rotation:
         xbmc.log("Image rotation disabled or no URL provided", xbmc.LOGINFO)
