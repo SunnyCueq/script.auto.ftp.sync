@@ -3,6 +3,7 @@
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
         <import addon="plugin.program.super.favourites" version="2.3.7"/>
+        <import addon="vfs.sftp" optional="true"/>
     </requires>
     <extension point="xbmc.service" library="auto_ftp_sync.py" start="startup"/>
     <extension point="xbmc.addon.metadata">
