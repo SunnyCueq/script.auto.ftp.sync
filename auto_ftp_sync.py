@@ -33,6 +33,12 @@ class Config:
         self.static_folders = [f.strip() for f in ADDON.getSettingString('static_folders').split(',') if f.strip()]
         self.enable_image_rotation = ADDON.getSettingBool('enable_image_rotation')
         
+        # Kategorisierungs-Einstellungen
+        self.enable_categories = ADDON.getSettingBool('enable_categories')
+        self.category_placeholder_prefix = ADDON.getSettingString('category_placeholder_prefix')
+        self.category_placeholder_suffix = ADDON.getSettingString('category_placeholder_suffix')
+        self.auto_categorize = ADDON.getSettingBool('auto_categorize')
+        
         # Pfade berechnen
         self.ftp_path = f"/{self.ftp_base_path}/auto_fav_sync/{self.custom_folder}/favourites.xml"
         self.local_favourites = os.path.join(xbmcvfs.translatePath('special://userdata'), 'favourites.xml')
@@ -84,6 +90,12 @@ ADDON_IMAGE_PATH = config.addon_image_path
 STATIC_FOLDERS = config.static_folders
 ENABLE_IMAGE_ROTATION = config.enable_image_rotation
 ICON_PATH = config.icon_path
+
+# Kategorisierungs-Variablen
+ENABLE_CATEGORIES = config.enable_categories
+CATEGORY_PLACEHOLDER_PREFIX = config.category_placeholder_prefix
+CATEGORY_PLACEHOLDER_SUFFIX = config.category_placeholder_suffix
+AUTO_CATEGORIZE = config.auto_categorize
 def show_notification(message_id: int, duration: int = 5000, **kwargs) -> None:
     """Zeigt eine Benachrichtigung an"""
     try:
@@ -113,6 +125,172 @@ def refresh_favourites_ui():
     except Exception as e:
         xbmc.log(f"Error refreshing favourites UI: {str(e)}", xbmc.LOGERROR)
         return False
+
+class FavouritesCategoryManager:
+    """Verwaltet die Kategorisierung von Favoriten mit Platzhaltern"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.categories = []
+        self.favourites_by_category = {}
+    
+    def create_category_placeholder(self, category_name: str) -> str:
+        """Erstellt einen Kategorie-Platzhalter-Eintrag"""
+        prefix = self.config.category_placeholder_prefix or "[KATEGORIE]"
+        suffix = self.config.category_placeholder_suffix or ""
+        
+        # Erstelle einen leeren Favoriten-Eintrag mit Kategorie-Name
+        category_display = f"{prefix} {category_name} {suffix}".strip()
+        
+        # XML-Eintrag für den Platzhalter
+        placeholder_xml = f'''    <favourite name="{category_display}">
+        <action>noop</action>
+    </favourite>'''
+        
+        return placeholder_xml
+    
+    def parse_favourites_with_categories(self, favourites_xml: str) -> dict:
+        """Parst Favoriten und erkennt Kategorien"""
+        import xml.etree.ElementTree as ET
+        
+        try:
+            root = ET.fromstring(favourites_xml)
+            categories = {}
+            current_category = "Allgemein"
+            
+            for favourite in root.findall('favourite'):
+                name = favourite.get('name', '')
+                action = favourite.find('action')
+                action_text = action.text if action is not None else ''
+                
+                # Prüfe, ob es ein Kategorie-Platzhalter ist
+                if self.is_category_placeholder(name):
+                    current_category = self.extract_category_name(name)
+                    if current_category not in categories:
+                        categories[current_category] = []
+                else:
+                    # Normaler Favorit
+                    if current_category not in categories:
+                        categories[current_category] = []
+                    categories[current_category].append({
+                        'name': name,
+                        'action': action_text,
+                        'element': favourite
+                    })
+            
+            return categories
+        except ET.ParseError as e:
+            xbmc.log(f"Error parsing favourites XML: {str(e)}", xbmc.LOGERROR)
+            return {}
+    
+    def is_category_placeholder(self, name: str) -> bool:
+        """Prüft, ob ein Favoriten-Name ein Kategorie-Platzhalter ist"""
+        prefix = self.config.category_placeholder_prefix or "[KATEGORIE]"
+        return name.strip().startswith(prefix.strip())
+    
+    def extract_category_name(self, placeholder_name: str) -> str:
+        """Extrahiert den Kategorie-Namen aus einem Platzhalter"""
+        prefix = self.config.category_placeholder_prefix or "[KATEGORIE]"
+        suffix = self.config.category_placeholder_suffix or ""
+        
+        # Entferne Präfix und Suffix
+        name = placeholder_name.strip()
+        if name.startswith(prefix):
+            name = name[len(prefix):].strip()
+        if name.endswith(suffix):
+            name = name[:-len(suffix)].strip()
+        
+        return name if name else "Allgemein"
+    
+    def categorize_favourites(self, favourites_xml: str) -> str:
+        """Kategorisiert Favoriten und fügt Platzhalter hinzu"""
+        if not self.config.enable_categories:
+            return favourites_xml
+        
+        try:
+            categories = self.parse_favourites_with_categories(favourites_xml)
+            
+            # Erstelle neue XML-Struktur mit Kategorien
+            new_xml = '<?xml version="1.0" encoding="UTF-8"?>\n<favourites>\n'
+            
+            for category_name, favourites in categories.items():
+                # Füge Kategorie-Platzhalter hinzu
+                new_xml += self.create_category_placeholder(category_name) + '\n'
+                
+                # Füge Favoriten der Kategorie hinzu
+                for fav in favourites:
+                    new_xml += f'''    <favourite name="{fav['name']}">
+        <action>{fav['action']}</action>
+    </favourite>
+'''
+            
+            new_xml += '</favourites>'
+            return new_xml
+            
+        except Exception as e:
+            xbmc.log(f"Error categorizing favourites: {str(e)}", xbmc.LOGERROR)
+            return favourites_xml
+    
+    def add_category_to_favourites(self, category_name: str) -> bool:
+        """Fügt eine neue Kategorie zu den Favoriten hinzu"""
+        try:
+            if not os.path.exists(self.config.local_favourites):
+                xbmc.log("Favourites file does not exist", xbmc.LOGWARNING)
+                return False
+            
+            # Lese aktuelle Favoriten
+            with open(self.config.local_favourites, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Füge Kategorie-Platzhalter hinzu
+            category_placeholder = self.create_category_placeholder(category_name)
+            
+            # Finde die Stelle vor dem schließenden </favourites> Tag
+            if '</favourites>' in content:
+                content = content.replace('</favourites>', f'{category_placeholder}\n</favourites>')
+            else:
+                # Fallback: Füge am Ende hinzu
+                content += f'\n{category_placeholder}\n'
+            
+            # Speichere aktualisierte Favoriten
+            with open(self.config.local_favourites, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            xbmc.log(f"Category '{category_name}' added to favourites", xbmc.LOGINFO)
+            show_notification(30022, 3000, category=category_name)
+            return True
+            
+        except Exception as e:
+            xbmc.log(f"Error adding category to favourites: {str(e)}", xbmc.LOGERROR)
+            return False
+    
+    def auto_categorize_favourites(self) -> bool:
+        """Automatische Kategorisierung basierend auf Favoriten-Namen"""
+        if not self.config.auto_categorize or not self.config.enable_categories:
+            return False
+        
+        try:
+            if not os.path.exists(self.config.local_favourites):
+                return False
+            
+            # Lese aktuelle Favoriten
+            with open(self.config.local_favourites, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Kategorisiere Favoriten
+            categorized_content = self.categorize_favourites(content)
+            
+            # Speichere kategorisierte Favoriten
+            with open(self.config.local_favourites, 'w', encoding='utf-8') as f:
+                f.write(categorized_content)
+            
+            xbmc.log("Favourites auto-categorized successfully", xbmc.LOGINFO)
+            show_notification(30024, 3000)
+            return True
+            
+        except Exception as e:
+            xbmc.log(f"Error auto-categorizing favourites: {str(e)}", xbmc.LOGERROR)
+            return False
 
 def detect_system_type():
     """Erkennt automatisch, ob es sich um Haupt- oder Subsystem handelt"""
@@ -504,8 +682,9 @@ def sync_favourites_real():
         is_main = detect_system_type()
         xbmc.log(f"System type detected: {'Main' if is_main else 'Sub'}", xbmc.LOGINFO)
         
-        # Erstelle Sync-Manager
+        # Erstelle Sync-Manager und Kategorie-Manager
         sync_manager = SyncManager(config)
+        category_manager = FavouritesCategoryManager(config)
         ftp_manager = FTPManager(config.ftp_host, config.ftp_user, config.ftp_pass)
         
         try:
@@ -529,6 +708,16 @@ def sync_favourites_real():
                 xbmc.log("Static favourites synced successfully", xbmc.LOGINFO)
             else:
                 xbmc.log("Static favourites sync failed", xbmc.LOGWARNING)
+
+            # Kategorisierungs-Funktionen
+            if config.enable_categories:
+                if is_main:
+                    # Hauptsystem: Kategorisiere lokale Favoriten
+                    category_manager.auto_categorize_favourites()
+                else:
+                    # Subsystem: Kategorisiere heruntergeladene Favoriten
+                    if os.path.exists(config.local_favourites):
+                        category_manager.auto_categorize_favourites()
 
             # Aktualisiere UI sofort
             if refresh_favourites_ui():
@@ -688,4 +877,44 @@ def force_sync():
             
     except Exception as e:
         xbmc.log(f"Error in force sync: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def add_category_placeholder(category_name: str) -> bool:
+    """Fügt einen Kategorie-Platzhalter zu den Favoriten hinzu"""
+    try:
+        if not config.enable_categories:
+            xbmc.log("Categories are not enabled", xbmc.LOGWARNING)
+            return False
+        
+        category_manager = FavouritesCategoryManager(config)
+        success = category_manager.add_category_to_favourites(category_name)
+        
+        if success:
+            # Aktualisiere UI
+            refresh_favourites_ui()
+            
+        return success
+        
+    except Exception as e:
+        xbmc.log(f"Error adding category placeholder: {str(e)}", xbmc.LOGERROR)
+        return False
+
+def categorize_existing_favourites() -> bool:
+    """Kategorisiert bestehende Favoriten automatisch"""
+    try:
+        if not config.enable_categories:
+            xbmc.log("Categories are not enabled", xbmc.LOGWARNING)
+            return False
+        
+        category_manager = FavouritesCategoryManager(config)
+        success = category_manager.auto_categorize_favourites()
+        
+        if success:
+            # Aktualisiere UI
+            refresh_favourites_ui()
+            
+        return success
+        
+    except Exception as e:
+        xbmc.log(f"Error categorizing favourites: {str(e)}", xbmc.LOGERROR)
         return False

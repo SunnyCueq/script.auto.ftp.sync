@@ -114,10 +114,41 @@ msgstr "Zufallsbild heruntergeladen"
 
 msgctxt "#30033"
 msgid "Image list URL not provided"
-msgstr "URL für Bildliste nicht angegeben"
+msgstr "URL für Bildliste nicht amsgctxt "#30035"
+msgid "Cache cleared"
+msgstr "Cache geleert"
 
-msgctxt "#30034"
-msgid "No image URLs found in the list"
+msgctxt "#30015"
+msgid "Category Settings"
+msgstr "Kategorie-Einstellungen"
+
+msgctxt "#30018"
+msgid "Enable Categories"
+msgstr "Kategorien aktivieren"
+
+msgctxt "#30019"
+msgid "Category Placeholder Prefix"
+msgstr "Kategorie-Platzhalter Präfix"
+
+msgctxt "#30020"
+msgid "Category Placeholder Suffix"
+msgstr "Kategorie-Platzhalter Suffix"
+
+msgctxt "#30021"
+msgid "Auto Categorize Favourites"
+msgstr "Favoriten automatisch kategorisieren"
+
+msgctxt "#30022"
+msgid "Category placeholder added"
+msgstr "Kategorie-Platzhalter hinzugefügt"
+
+msgctxt "#30023"
+msgid "Category management enabled"
+msgstr "Kategorie-Verwaltung aktiviert"
+
+msgctxt "#30024"
+msgid "Favourites categorized successfully"
+msgstr "Favoriten erfolgreich kategorisiert"the list"
 msgstr "Keine Bild-URLs in der Liste gefunden"
 
 msgctxt "#30035"
