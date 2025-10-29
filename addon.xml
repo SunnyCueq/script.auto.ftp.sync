@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<addon id="script.auto.ftp.sync" version="1.0.1" name="Auto FTP Sync" provider-name="Doku-Kanal">
+<addon id="script.auto.ftp.sync" version="1.1.0" name="Auto FTP Sync" provider-name="Doku-Kanal">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
         <import addon="plugin.program.super.favourites" version="2.3.7"/>
     </requires>
     <extension point="xbmc.service" library="auto_ftp_sync.py" start="startup"/>
     <extension point="xbmc.addon.metadata">
-        <summary lang="en_gb">Automatically sync your Kodi favourites with an FTP server and rotate background images</summary>
-        <summary lang="de_de">Automatisches Synchronisieren deiner Kodi-Favoriten mit einem FTP-Server und Rotieren von Hintergrundbildern</summary>
+        <summary lang="en_gb">Automatically sync your Kodi favourites with an FTP server, rotate background images, and categorize favourites</summary>
+        <summary lang="de_de">Automatisches Synchronisieren deiner Kodi-Favoriten mit einem FTP-Server, Rotieren von Hintergrundbildern und Kategorisierung</summary>
         <description lang="en_gb">
             This addon helps you automatically sync your Kodi favourites across multiple devices using an FTP server. 
             You can configure custom folders for standard favourites and choose to sync specific static folders like Anime, Horror, Marvel, and Goat. 
-            Additionally, it allows you to rotate background images from a provided list URL.
+            Additionally, it allows you to rotate background images from a provided list URL and categorize your favourites with placeholder separators.
         </description>
         <description lang="de_de">
             Dieses Addon hilft dir dabei, deine Kodi-Favoriten automatisch über mehrere Geräte hinweg mit einem FTP-Server zu synchronisieren.
             Du kannst benutzerdefinierte Ordner für Standard-Favoriten konfigurieren und wählen, ob du bestimmte statische Ordner wie Anime, Horror, Marvel und Goat synchronisieren möchtest.
-            Außerdem ermöglicht es dir, Hintergrundbilder aus einer bereitgestellten URL-Liste zu rotieren.
+            Außerdem ermöglicht es dir, Hintergrundbilder aus einer bereitgestellten URL-Liste zu rotieren und deine Favoriten mit Platzhalter-Trennern zu kategorisieren.
         </description>
         <language addon="resource.language.en_gb" />
         <language addon="resource.language.de_de" />

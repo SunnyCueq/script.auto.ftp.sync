@@ -114,10 +114,41 @@ msgstr "Random image downloaded"
 
 msgctxt "#30033"
 msgid "Image list URL not provided"
-msgstr "Image list URL not provided"
+msgstr "Image list URmsgctxt "#30035"
+msgid "Cache cleared"
+msgstr "Cache cleared"
 
-msgctxt "#30034"
-msgid "No image URLs found in the list"
+msgctxt "#30015"
+msgid "Category Settings"
+msgstr "Category Settings"
+
+msgctxt "#30018"
+msgid "Enable Categories"
+msgstr "Enable Categories"
+
+msgctxt "#30019"
+msgid "Category Placeholder Prefix"
+msgstr "Category Placeholder Prefix"
+
+msgctxt "#30020"
+msgid "Category Placeholder Suffix"
+msgstr "Category Placeholder Suffix"
+
+msgctxt "#30021"
+msgid "Auto Categorize Favourites"
+msgstr "Auto Categorize Favourites"
+
+msgctxt "#30022"
+msgid "Category placeholder added"
+msgstr "Category placeholder added"
+
+msgctxt "#30023"
+msgid "Category management enabled"
+msgstr "Category management enabled"
+
+msgctxt "#30024"
+msgid "Favourites categorized successfully"
+msgstr "Favourites categorized successfully"nd in the list"
 msgstr "No image URLs found in the list"
 
 msgctxt "#30035"

@@ -11,10 +11,16 @@
         <setting id="ftp_host" type="text" label="30008" default=""/>
         <setting id="ftp_user" type="text" label="30009" default=""/>
         <setting id="ftp_pass" type="text" label="30010" option="hidden" default=""/>
-    </category>
-    <category label="30011"> <!-- Sync Options -->
+       <category label="30011"> <!-- Sync Options -->
         <setting id="overwrite_static" type="bool" label="30012" default="false"/>
         <setting id="static_folders" type="text" label="30013" default="Anime,Horror,Marvel,Goat"/>
+    </category>
+    <category label="30015"> <!-- Category Settings -->
+        <setting id="enable_categories" type="bool" label="30018" default="false"/>
+        <setting id="category_placeholder_prefix" type="text" label="30019" default="[KATEGORIE]"/>
+        <setting id="category_placeholder_suffix" type="text" label="30020" default=""/>
+        <setting id="auto_categorize" type="bool" label="30021" default="true"/>
+    </category>
     </category>
     <category label="30014"> <!-- Image Settings -->
         <setting id="image_list_url" type="text" label="30016" default="http://domain.de/images.txt"/>
